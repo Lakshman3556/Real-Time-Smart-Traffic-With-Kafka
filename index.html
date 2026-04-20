@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>HYD Traffic Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+<style>
+:root {
+  --bg:        #050a0e;
+  --surface:   #0c1419;
+  --card:      #111b22;
+  --border:    #1e2d38;
+  --accent:    #00e5ff;
+  --accent2:   #ff6b35;
+  --heavy:     #ff3d57;
+  --moderate:  #ffab00;
+  --smooth:    #00e676;
+  --text:      #e2eaf0;
+  --muted:     #4a6272;
+  --mono:      'Space Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── HEADER ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.logo {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.pulse-dot {
+  width: 8px; height: 8px;
+  background: var(--smooth);
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%      { opacity:0.4; transform:scale(0.6); }
+}
+
+#lastUpdated {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+
+/* ── TABS ── */
+nav {
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tab {
+  padding: 10px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all .2s;
+  font-family: var(--mono);
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── VIEWS ── */
+.view { display: none; flex: 1; overflow: hidden; }
+.view.active { display: flex; }
+
+/* ═══ TAB 1 — MAP ═══ */
+#mapView { flex-direction: row; }
+#map { flex: 1; }
+
+.sidebar {
+  width: 300px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.card {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+/* stat pills */
+.stat-row { display: flex; gap: 8px; margin-bottom: 6px; }
+.stat {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 6px;
+  text-align: center;
+}
+.stat .val {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+.stat .lbl {
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+}
+
+.legend-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+.legend-item {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; color: var(--muted);
+}
+.dot { width:8px; height:8px; border-radius:50%; }
+
+/* ═══ TAB 2 — GRAPH ═══ */
+#graphView {
+  flex-direction: column;
+  background: var(--bg);
+  position: relative;
+}
+
+#graphToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#graphToolbar .hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  display: flex; gap: 16px; align-items: center;
+}
+.legend-chip {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; color: var(--muted);
+}
+
+#graphSvg {
+  flex: 1;
+  width: 100%;
+}
+
+#graphInfo {
+  position: absolute;
+  bottom: 20px; right: 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 200px;
+  display: none;
+}
+#graphInfo .info-name { font-size: 14px; color: var(--text); margin-bottom: 8px; font-weight: 700; }
+#graphInfo .info-row { display: flex; justify-content: space-between; margin: 3px 0; }
+#graphInfo .info-val { color: var(--accent); }
+
+/* ═══ TAB 3 — ROUTE ═══ */
+#routeView {
+  flex-direction: row;
+  background: var(--bg);
+}
+
+#routePanel {
+  width: 360px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+#routeMap { flex: 1; }
+
+.route-section { padding: 18px; border-bottom: 1px solid var(--border); }
+
+.route-section h3 {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+select {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  margin-bottom: 10px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234a6272' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+select:focus { border-color: var(--accent); }
+
+.btn-primary {
+  width: 100%;
+  padding: 11px;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: opacity .2s;
+}
+.btn-primary:hover { opacity: 0.85; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-refresh {
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
+
+/* summary metrics */
+.metrics { display: flex; gap: 8px; margin-bottom: 12px; }
+.metric {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+}
+.metric .mval {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.metric .mlbl {
+  font-size: 9px; color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-top: 3px;
+}
+
+/* path nodes */
+.path-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.path-node {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+}
+.path-arrow { color: var(--muted); font-size: 14px; }
+
+/* step table */
+.step-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.step-table th {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+  padding: 6px 8px;
+  text-align: left;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.step-table td {
+  padding: 8px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+}
+.badge-HEAVY    { background: rgba(255,61,87,.15); color: var(--heavy); }
+.badge-MODERATE { background: rgba(255,171,0,.15); color: var(--moderate); }
+.badge-SMOOTH   { background: rgba(0,230,118,.15); color: var(--smooth); }
+.badge-UNKNOWN  { background: rgba(74,98,114,.15); color: var(--muted); }
+
+#routePlaceholder {
+  padding: 30px 18px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <span class="pulse-dot"></span>
+    HYD · Traffic Intelligence
+  </div>
+  <span id="lastUpdated">Connecting…</span>
+</header>
+
+<!-- ── NAV ── -->
+<nav>
+  <div class="tab active" data-view="map">📡 Live Map</div>
+  <div class="tab" data-view="graph">🕸 Road Graph</div>
+  <div class="tab" data-view="route">🚗 Route Finder</div>
+</nav>
+
+<!-- ════════════════════════════════════
+     TAB 1 — LIVE MAP
+════════════════════════════════════ -->
+<div class="view active" id="mapView">
+  <div id="map"></div>
+  <div class="sidebar">
+
+    <div class="card">
+      <div class="card-label">Live Statistics</div>
+      <div class="stat-row">
+        <div class="stat"><div class="val" id="sTotal" style="color:var(--accent)">0</div><div class="lbl">Areas</div></div>
+        <div class="stat"><div class="val" id="sHeavy" style="color:var(--heavy)">0</div><div class="lbl">Heavy</div></div>
+        <div class="stat"><div class="val" id="sModerate" style="color:var(--moderate)">0</div><div class="lbl">Moderate</div></div>
+        <div class="stat"><div class="val" id="sSmooth" style="color:var(--smooth)">0</div><div class="lbl">Smooth</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Traffic Distribution</div>
+      <canvas id="pieChart" height="170"></canvas>
+      <div class="legend-row">
+        <div class="legend-item"><div class="dot" style="background:var(--heavy)"></div>Heavy</div>
+        <div class="legend-item"><div class="dot" style="background:var(--moderate)"></div>Moderate</div>
+        <div class="legend-item"><div class="dot" style="background:var(--smooth)"></div>Smooth</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Vehicle Count by Area</div>
+      <canvas id="barChart" height="200"></canvas>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     TAB 2 — GRAPH
+════════════════════════════════════ -->
+<div class="view" id="graphView">
+  <div id="graphToolbar">
+    <div class="hint">
+      <span>Node size = centrality score</span>
+      <span class="legend-chip"><div class="dot" style="background:var(--heavy)"></div>Heavy</span>
+      <span class="legend-chip"><div class="dot" style="background:var(--moderate)"></div>Moderate</span>
+      <span class="legend-chip"><div class="dot" style="background:var(--smooth)"></div>Smooth</span>
+      <span style="color:var(--accent)">Drag nodes · Hover for details</span>
+    </div>
+    <button class="btn-refresh" onclick="loadGraph()">↻ Refresh</button>
+  </div>
+  <svg id="graphSvg"></svg>
+  <div id="graphInfo">
+    <div class="info-name" id="gi-name">—</div>
+    <div class="info-row"><span>Status</span><span class="info-val" id="gi-status">—</span></div>
+    <div class="info-row"><span>Vehicles</span><span class="info-val" id="gi-count">—</span></div>
+    <div class="info-row"><span>Speed</span><span class="info-val" id="gi-speed">—</span></div>
+    <div class="info-row"><span>Centrality</span><span class="info-val" id="gi-cent">—</span></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     TAB 3 — ROUTE FINDER
+════════════════════════════════════ -->
+<div class="view" id="routeView">
+
+  <div id="routePanel">
+    <div class="route-section">
+      <h3>Traffic-Aware Route</h3>
+      <select id="fromLoc"><option value="">— Origin —</option></select>
+      <select id="toLoc"><option value="">— Destination —</option></select>
+      <button class="btn-primary" onclick="findRoute()">Calculate Route →</button>
+    </div>
+
+    <div id="routePlaceholder">
+      Select origin &amp; destination<br>to compute the optimal path<br>
+      <span style="color:var(--border)">────────────────</span><br>
+      Heavy traffic zones are<br>penalized 4× in path cost
+    </div>
+
+    <div id="routeResult" style="display:none; padding:0;"></div>
+  </div>
+
+  <div id="routeMap"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════
+const API = "http://127.0.0.1:5000";
+
+const COORDS = {
+  "Madhapur":      [17.4483, 78.3915],
+  "Kondapur":      [17.4698, 78.3624],
+  "Hitech City":   [17.4435, 78.3772],
+  "Gachibowli":    [17.4401, 78.3489],
+  "Banjara Hills": [17.4126, 78.4482],
+  "Jubilee Hills": [17.4239, 78.4738],
+  "Begumpet":      [17.4440, 78.4625],
+  "Ameerpet":      [17.4375, 78.4483],
+  "Secunderabad":  [17.4399, 78.4983],
+  "Kukatpally":    [17.4948, 78.3996],
+  "Miyapur":       [17.4967, 78.3565],
+  "LB Nagar":      [17.3457, 78.5522],
+  "Dilsukhnagar":  [17.3688, 78.5247],
+  "Uppal":         [17.4058, 78.5591],
+  "Charminar":     [17.3616, 78.4747]
+};
+
+const STATUS_COLOR = {
+  HEAVY: "#ff3d57", MODERATE: "#ffab00", SMOOTH: "#00e676", UNKNOWN: "#4a6272"
+};
+
+let liveData = [];
+
+// ═══════════════════════════════════════════════════════
+// TAB SWITCHING
+// ═══════════════════════════════════════════════════════
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById(tab.dataset.view + "View").classList.add("active");
+    if (tab.dataset.view === "graph") loadGraph();
+    if (tab.dataset.view === "route" && !routeMapObj) initRouteMap();
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// TAB 1 — LIVE MAP
+// ═══════════════════════════════════════════════════════
+const mapObj = L.map('map').setView([17.3850, 78.4867], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap'
+}).addTo(mapObj);
+
+const pieChart = new Chart(document.getElementById('pieChart'), {
+  type: 'pie',
+  data: {
+    labels: ["HEAVY","MODERATE","SMOOTH"],
+    datasets: [{
+      data: [0,0,0],
+      backgroundColor: ["#ff3d57","#ffab00","#00e676"],
+      borderWidth: 0
+    }]
+  },
+  options: {
+    plugins: { legend: { display: false } },
+    animation: { duration: 400 }
+  }
+});
+
+const barChart = new Chart(document.getElementById('barChart'), {
+  type: 'bar',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Vehicles',
+      data: [],
+      backgroundColor: 'rgba(0,229,255,0.6)',
+      borderRadius: 3
+    }]
+  },
+  options: {
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: { stepSize:1, precision:0, color:"#4a6272", font:{size:9} },
+        grid: { color:"#1e2d38" }
+      },
+      x: {
+        ticks: { color:"#4a6272", font:{size:7}, maxRotation:45 },
+        grid: { display: false }
+      }
+    },
+    plugins: { legend: { display:false } }
+  }
+});
+
+const markerRefs = {};
+
+function loadData() {
+  fetch(`${API}/traffic`)
+    .then(r => r.json())
+    .then(data => {
+      liveData = data;
+      let heavy=0, moderate=0, smooth=0;
+      const labels=[], counts=[];
+
+      // populate dropdowns
+      const locs = data.map(d=>d.location).sort();
+      ["fromLoc","toLoc"].forEach(id => {
+        const sel = document.getElementById(id);
+        const cur = sel.value;
+        sel.innerHTML = `<option value="">— ${id==="fromLoc"?"Origin":"Destination"} —</option>`;
+        locs.forEach(l => {
+          sel.innerHTML += `<option value="${l}" ${l===cur?"selected":""}>${l}</option>`;
+        });
+      });
+
+      data.forEach(item => {
+        const coords = COORDS[item.location];
+        if (coords) {
+          const color = STATUS_COLOR[item.status] || "#4a6272";
+          const popup = `
+            <b style="color:${color}">${item.location}</b><br>
+            Status: <b>${item.status}</b><br>
+            Vehicles: ${item.count} &nbsp;|&nbsp; Speed: ${item.speed} km/h
+          `;
+          if (markerRefs[item.location]) {
+            markerRefs[item.location].setStyle({color, fillColor:color}).setPopupContent(popup);
+          } else {
+            markerRefs[item.location] = L.circleMarker(coords, {
+              radius:12, color, fillColor:color, fillOpacity:0.85, weight:2
+            }).addTo(mapObj).bindPopup(popup);
+          }
+        }
+
+        if (item.status==="HEAVY") heavy++;
+        else if (item.status==="MODERATE") moderate++;
+        else smooth++;
+        labels.push(item.location);
+        counts.push(item.count);
+      });
+
+      // stats
+      document.getElementById("sTotal").innerText    = data.length;
+      document.getElementById("sHeavy").innerText    = heavy;
+      document.getElementById("sModerate").innerText = moderate;
+      document.getElementById("sSmooth").innerText   = smooth;
+
+      // charts
+      pieChart.data.datasets[0].data = [heavy, moderate, smooth];
+      pieChart.update();
+      barChart.data.labels = labels;
+      barChart.data.datasets[0].data = counts;
+      barChart.update();
+
+      document.getElementById("lastUpdated").innerText =
+        "Updated " + new Date().toLocaleTimeString();
+    })
+    .catch(() => {
+      document.getElementById("lastUpdated").innerText = "⚠ Reconnecting…";
+    });
+}
+
+setInterval(loadData, 3000);
+loadData();
+
+// ═══════════════════════════════════════════════════════
+// TAB 2 — D3 GRAPH
+// ═══════════════════════════════════════════════════════
+function loadGraph() {
+  fetch(`${API}/graph`)
+    .then(r => r.json())
+    .then(renderGraph)
+    .catch(e => console.error("Graph load failed:", e));
+}
+
+function renderGraph(gd) {
+  const svg = d3.select("#graphSvg");
+  svg.selectAll("*").remove();
+
+  const el  = document.getElementById("graphSvg");
+  const W   = el.clientWidth  || 900;
+  const H   = el.clientHeight || 520;
+  svg.attr("viewBox", `0 0 ${W} ${H}`);
+
+  const cent    = gd.centrality;
+  const maxCent = Math.max(...Object.values(cent));
+
+  // build lookup: node status
+  const nodeMap = {};
+  gd.nodes.forEach(n => nodeMap[n.id] = n);
+
+  // edge color by avg status
+  function edgeColor(e) {
+    const sA = nodeMap[e.source.id || e.source]?.status;
+    const sB = nodeMap[e.target.id || e.target]?.status;
+    if (sA==="HEAVY"||sB==="HEAVY")         return "#ff3d5740";
+    if (sA==="MODERATE"||sB==="MODERATE")   return "#ffab0040";
+    return "#00e67630";
+  }
+
+  const sim = d3.forceSimulation(gd.nodes)
+    .force("link", d3.forceLink(gd.edges).id(d=>d.id).distance(d => Math.min(130, d.km*16)))
+    .force("charge", d3.forceManyBody().strength(-380))
+    .force("center", d3.forceCenter(W/2, H/2))
+    .force("collision", d3.forceCollide(28));
+
+  // edges
+  const link = svg.append("g").selectAll("line")
+    .data(gd.edges).enter().append("line")
+    .attr("stroke", "#1e2d38")
+    .attr("stroke-width", d => Math.max(1.5, 5 - d.weight/18))
+    .attr("stroke-linecap", "round");
+
+  // edge km labels
+  const edgeLbl = svg.append("g").selectAll("text")
+    .data(gd.edges).enter().append("text")
+    .attr("text-anchor","middle")
+    .attr("font-size","8")
+    .attr("font-family","Space Mono, monospace")
+    .attr("fill","#2a3d4a")
+    .text(d => d.km+"k");
+
+  // node groups
+  const node = svg.append("g").selectAll("g")
+    .data(gd.nodes).enter().append("g")
+    .style("cursor","pointer")
+    .call(d3.drag()
+      .on("start", (ev,d) => { if(!ev.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag",  (ev,d) => { d.fx=ev.x; d.fy=ev.y; })
+      .on("end",   (ev,d) => { if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; })
+    )
+    .on("mouseenter", (ev, d) => {
+      const info = document.getElementById("graphInfo");
+      info.style.display = "block";
+      document.getElementById("gi-name").innerText   = d.id;
+      document.getElementById("gi-status").innerText = d.status || "UNKNOWN";
+      document.getElementById("gi-status").style.color = STATUS_COLOR[d.status] || "#4a6272";
+      document.getElementById("gi-count").innerText  = d.count + " vehicles";
+      document.getElementById("gi-speed").innerText  = d.speed + " km/h";
+      document.getElementById("gi-cent").innerText   = ((cent[d.id]||0)*100).toFixed(1) + "%";
+    })
+    .on("mouseleave", () => {
+      document.getElementById("graphInfo").style.display = "none";
+    });
+
+  // outer glow ring
+  node.append("circle")
+    .attr("r", d => 12 + (cent[d.id]/maxCent)*20 + 5)
+    .attr("fill", d => STATUS_COLOR[d.status] || "#4a6272")
+    .attr("fill-opacity", 0.08);
+
+  // main circle
+  node.append("circle")
+    .attr("r", d => 12 + (cent[d.id]/maxCent)*20)
+    .attr("fill", d => STATUS_COLOR[d.status] || "#4a6272")
+    .attr("fill-opacity", 0.85)
+    .attr("stroke", "#0c1419")
+    .attr("stroke-width", 2);
+
+  // label
+  node.append("text")
+    .attr("text-anchor","middle")
+    .attr("dy","0.35em")
+    .attr("font-size","9")
+    .attr("font-family","DM Sans, sans-serif")
+    .attr("font-weight","700")
+    .attr("fill","#050a0e")
+    .text(d => d.id.split(" ")[0]);
+
+  sim.on("tick", () => {
+    link
+      .attr("x1",d=>d.source.x).attr("y1",d=>d.source.y)
+      .attr("x2",d=>d.target.x).attr("y2",d=>d.target.y)
+      .attr("stroke", d => edgeColor(d));
+    edgeLbl
+      .attr("x",d=>(d.source.x+d.target.x)/2)
+      .attr("y",d=>(d.source.y+d.target.y)/2);
+    node.attr("transform",d=>`translate(${d.x},${d.y})`);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB 3 — ROUTE FINDER
+// ═══════════════════════════════════════════════════════
+let routeMapObj = null;
+let routeLayerGroup = null;
+
+function initRouteMap() {
+  routeMapObj = L.map('routeMap').setView([17.3850, 78.4867], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(routeMapObj);
+  routeLayerGroup = L.layerGroup().addTo(routeMapObj);
+}
+
+function findRoute() {
+  const from = document.getElementById("fromLoc").value;
+  const to   = document.getElementById("toLoc").value;
+
+  if (!from || !to) { alert("Select both origin and destination."); return; }
+  if (from === to)  { alert("Origin and destination are the same."); return; }
+
+  if (!routeMapObj) initRouteMap();
+
+  document.getElementById("routePlaceholder").style.display = "none";
+  const box = document.getElementById("routeResult");
+  box.style.display = "block";
+  box.innerHTML = `<div style="padding:20px; font-family:var(--mono); font-size:11px; color:var(--muted)">🔄 Computing optimal route…</div>`;
+
+  fetch(`${API}/route?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+    .then(r => r.json())
+    .then(result => {
+      if (result.error) {
+        box.innerHTML = `<div style="padding:16px; color:var(--heavy)">❌ ${result.error}</div>`;
+        return;
+      }
+
+      // draw on route map
+      routeLayerGroup.clearLayers();
+
+      // draw all location dots
+      liveData.forEach(item => {
+        const c = COORDS[item.location];
+        if (!c) return;
+        const col = STATUS_COLOR[item.status] || "#4a6272";
+        L.circleMarker(c, {
+          radius: 7, color: col, fillColor: col, fillOpacity: 0.5, weight: 1
+        }).addTo(routeLayerGroup);
+      });
+
+      // draw route polyline
+      const pathCoords = result.path
+        .filter(loc => COORDS[loc])
+        .map(loc => COORDS[loc]);
+
+      L.polyline(pathCoords, {
+        color: "#00e5ff", weight: 5, opacity: 0.9,
+        dashArray: null
+      }).addTo(routeLayerGroup);
+
+      // start/end markers
+      result.path.forEach((loc, i) => {
+        const c = COORDS[loc];
+        if (!c) return;
+        const isEnd = i===0 || i===result.path.length-1;
+        if (isEnd) {
+          L.circleMarker(c, {
+            radius: 14,
+            color: i===0 ? "#00e5ff" : "#ff6b35",
+            fillColor: i===0 ? "#00e5ff" : "#ff6b35",
+            fillOpacity: 1, weight: 2
+          }).bindPopup(`<b>${i===0?"START":"END"}</b><br>${loc}`).addTo(routeLayerGroup);
+        }
+      });
+
+      if (pathCoords.length > 1) {
+        routeMapObj.fitBounds(L.latLngBounds(pathCoords), { padding:[40,40] });
+      }
+
+      // path nodes HTML
+      const pathHTML = result.path.map((loc, i) => {
+        const status = liveData.find(d=>d.location===loc)?.status || "SMOOTH";
+        const col    = STATUS_COLOR[status];
+        return (i>0 ? '<span class="path-arrow">→</span>' : "") +
+          `<span class="path-node" style="background:${col}18; color:${col}; border-color:${col}40">${loc}</span>`;
+      }).join("");
+
+      // steps HTML
+      const stepsHTML = result.steps.map(s => `
+        <tr>
+          <td>${s.from}</td>
+          <td style="color:var(--accent)">${s.to}</td>
+          <td style="font-family:var(--mono)">${s.km} km</td>
+          <td style="font-family:var(--mono)">${s.time_min} min</td>
+          <td><span class="badge badge-${s.status}">${s.status}</span></td>
+        </tr>
+      `).join("");
+
+      box.innerHTML = `
+        <div style="padding:16px; border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:0.12em; text-transform:uppercase; margin-bottom:10px">Summary</div>
+          <div class="metrics">
+            <div class="metric"><div class="mval">${result.total_km}</div><div class="mlbl">km</div></div>
+            <div class="metric"><div class="mval">${result.total_time_min}</div><div class="mlbl">mins</div></div>
+            <div class="metric"><div class="mval">${result.path.length-1}</div><div class="mlbl">hops</div></div>
+          </div>
+        </div>
+
+        <div style="padding:16px; border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:0.12em; text-transform:uppercase; margin-bottom:10px">Optimal Path</div>
+          <div class="path-flow">${pathHTML}</div>
+        </div>
+
+        <div style="padding:16px">
+          <div style="font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:0.12em; text-transform:uppercase; margin-bottom:10px">Step-by-Step</div>
+          <table class="step-table">
+            <thead><tr><th>From</th><th>To</th><th>Dist</th><th>Time</th><th>Traffic</th></tr></thead>
+            <tbody>${stepsHTML}</tbody>
+          </table>
+          <p style="margin-top:12px; font-size:9px; color:var(--muted); font-family:var(--mono); line-height:1.7">
+            ⚡ Dijkstra · HEAVY = 4× cost penalty · MODERATE = 2× cost penalty
+          </p>
+        </div>
+      `;
+    })
+    .catch(() => {
+      box.innerHTML = `<div style="padding:16px; color:var(--heavy)">❌ Could not reach Flask API</div>`;
+    });
+}
+</script>
+</body>
+</html>

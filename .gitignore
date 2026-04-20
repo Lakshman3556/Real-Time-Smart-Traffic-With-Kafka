@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+
+venv/
+venv_wsl/
+spark_env/
+
+checkpoint/
+output/
+
+.env
+.env.*
+
+.DS_Store
+Thumbs.db
